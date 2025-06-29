@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ultimate Audio Player</title>
+  <style>
+    body {
+      background-image: url(https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcShzQFOnr0SmjiZrounl_6f7bP72aQTBv1Kp-Rf_UdT2Vw8hmc-5REUOKV3&s=10);
+      color: green;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .player {
+      max-width: 800px;
+      margin: auto;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 15px #111;
+    }
+
+    input, button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: green;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 10px;
+      border-radius: 10px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    #playlist {
+      text-align: left;
+      max-height: 250px;
+      overflow-y: auto;
+      margin-top: 15px;
+      border-top: 1px solid #444;
+      padding-top: 10px;
+    }
+
+    .track {
+      padding: 8px;
+      border-bottom: 1px solid green;
+      background-color: transparent;
+      color: green;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+
+    .track:hover {
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .track.highlight {
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .track-name {
+      font-weight: bold;
+      cursor: pointer;
+      flex-grow: 1;
+    }
+
+    .track button {
+      width: auto;
+      padding: 5px 10px;
+      margin-left: 10px;
+      background: green;
+    }
+
+    .track button:hover {
+      background: rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <h1>Ultimate Audio Player</h1>
+  <div class="player">
+    <input type="url" id="urlInput" placeholder="Enter MP3/M4A/WAV URL" />
+    <input type="file" id="fileInput" accept="audio/*" multiple />
+    <button onclick="addFromUrl()">Add from URL</button>
+
+    <audio id="audioPlayer" controls></audio>
+
+    <div class="controls">
+      <button onclick="playPrevious()">⏮️ Previous</button>
+      <button onclick="playNext()">⏭️ Next</button>
+      <button onclick="toggleLoop()" id="loopBtn">🔁 Loop: Off</button>
+      <button onclick="toggleAutoplay()" id="autoplayBtn">▶️ Autoplay: On</button>
+    </div>
+
+    <input type="text" id="searchInput" placeholder="Search playlist..." oninput="searchPlaylist()" />
+    <div id="playlist"></div>
+  </div>
+
+  <script>
+    const urlInput = document.getElementById("urlInput");
+    const fileInput = document.getElementById("fileInput");
+    const audioPlayer = document.getElementById("audioPlayer");
+    const playlistDiv = document.getElementById("playlist");
+    const searchInput = document.getElementById("searchInput");
+    const loopBtn = document.getElementById("loopBtn");
+    const autoplayBtn = document.getElementById("autoplayBtn");
+
+    let playlist = JSON.parse(localStorage.getItem("audioPlaylist") || "[]");
+    let currentIndex = 0;
+    let isAutoplay = true;
+
+    function savePlaylist() {
+      localStorage.setItem("audioPlaylist", JSON.stringify(playlist));
+    }
+
+    function addTrack(source, name) {
+      playlist.push({ source, name });
+      savePlaylist();
+      renderPlaylist();
+    }
+
+    function addFromUrl() {
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      const ext = url.split('.').pop().toLowerCase();
+      const isAudio = ["mp3", "m4a", "wav", "ogg"].includes(ext);
+
+      if (isAudio) {
+        addTrack(url, decodeURIComponent(url.split("/").pop()));
+        urlInput.value = "";
+        if (playlist.length === 1) playCurrent(); // Auto-play if first track
+      } else {
+        alert("Unsupported or unrecognized link.");
+      }
+    }
+
+    fileInput.addEventListener("change", (e) => {
+      for (let file of e.target.files) {
+        const url = URL.createObjectURL(file);
+        addTrack(url, file.name);
+      }
+      if (playlist.length === e.target.files.length) playCurrent();
+    });
+
+    function renderPlaylist() {
+      playlistDiv.innerHTML = "";
+      playlist.forEach((track, index) => {
+        const div = document.createElement("div");
+        div.className = "track" + (index === currentIndex ? " highlight" : "");
+
+        const name = document.createElement("div");
+        name.className = "track-name";
+        name.textContent = track.name;
+        name.onclick = () => {
+          currentIndex = index;
+          playCurrent();
+        };
+
+        const del = document.createElement("button");
+        del.textContent = "🗑️";
+        del.title = "Delete";
+        del.onclick = (e) => {
+          e.stopPropagation();
+          playlist.splice(index, 1);
+          if (currentIndex >= playlist.length) currentIndex = playlist.length - 1;
+          savePlaylist();
+          renderPlaylist();
+          playCurrent();
+        };
+
+        div.append(name, del);
+        playlistDiv.appendChild(div);
+      });
+    }
+
+    function playCurrent() {
+      const track = playlist[currentIndex];
+      if (!track) {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute("src");
+        return;
+      }
+      audioPlayer.src = track.source;
+      audioPlayer.play();
+      renderPlaylist();
+    }
+
+    function playNext() {
+      if (currentIndex < playlist.length - 1) {
+        currentIndex++;
+        playCurrent();
+      }
+    }
+
+    function playPrevious() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        playCurrent();
+      }
+    }
+
+    function searchPlaylist() {
+      const query = searchInput.value.toLowerCase();
+      document.querySelectorAll(".track").forEach(track => {
+        const name = track.querySelector(".track-name").textContent.toLowerCase();
+        track.style.display = name.includes(query) ? "flex" : "none";
+      });
+    }
+
+    function toggleLoop() {
+      audioPlayer.loop = !audioPlayer.loop;
+      loopBtn.textContent = `🔁 Loop: ${audioPlayer.loop ? "On" : "Off"}`;
+    }
+
+    function toggleAutoplay() {
+      isAutoplay = !isAutoplay;
+      autoplayBtn.textContent = `▶️ Autoplay: ${isAutoplay ? "On" : "Off"}`;
+    }
+
+    window.addEventListener("load", () => {
+      renderPlaylist();
+      if (playlist.length) playCurrent();
+    });
+
+    audioPlayer.addEventListener("ended", () => {
+      if (!audioPlayer.loop && isAutoplay && currentIndex < playlist.length - 1) {
+        currentIndex++;
+        playCurrent();
+      }
+    });
+  </script>
+</body>
+</html>
